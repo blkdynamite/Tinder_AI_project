@@ -308,11 +308,15 @@ def show_dashboard_overview(data, trend_monitor):
         st.info("No high-risk items detected in current dataset.")
 
 @st.cache_data(ttl=300)  # Cache analysis results for 5 minutes
-def analyze_profile_cached(profile_scanner, profile_id, profile_data):
-    """Cached profile analysis to avoid re-computation"""
+def analyze_profile_cached(profile_id, profile_data_json):
+    """Cached profile analysis to avoid re-computation - uses hashable parameters"""
+    # Get profile_scanner from cached resource
+    profile_scanner = initialize_profile_scanner()
     if profile_scanner is None:
         return None
     try:
+        # Reconstruct profile_data from JSON
+        profile_data = json.loads(profile_data_json)
         return profile_scanner.analyze_profile(profile_data)
     except Exception as e:
         return None
@@ -349,11 +353,9 @@ def show_profile_scanner(data, profile_scanner, components_loaded):
                     if st.button("🔍 Analyze Profile", type="primary"):
                         with st.spinner("Analyzing profile..."):
                             # Use cached analysis function
-                            analysis_result = analyze_profile_cached(
-                                profile_scanner, 
-                                profile.get('profile_id', profile.get('id', 'unknown')),
-                                profile
-                            )
+                            profile_id = profile.get('profile_id', profile.get('id', 'unknown'))
+                            profile_data_json = json.dumps(profile, sort_keys=True, default=str)
+                            analysis_result = analyze_profile_cached(profile_id, profile_data_json)
                             
                             if analysis_result is None:
                                 try:
@@ -399,24 +401,20 @@ def show_profile_scanner(data, profile_scanner, components_loaded):
         st.warning("No profiles available. Please generate synthetic data first.")
 
 @st.cache_data(ttl=300)  # Cache audit results for 5 minutes
-def audit_conversation_cached(message_auditor, conversation_id, conversation_data):
-    """Cached conversation audit to avoid re-computation"""
+def audit_conversation_cached(conversation_id, conversation_data_json):
+    """Cached conversation audit to avoid re-computation - uses hashable parameters"""
+    # Get message_auditor from cached resource
+    message_auditor = initialize_message_auditor()
     if message_auditor is None:
         return None
     try:
+        # Reconstruct conversation_data from JSON
+        conversation_data = json.loads(conversation_data_json)
         return message_auditor.audit_conversation(conversation_data)
     except Exception as e:
         return None
 
-@st.cache_data(ttl=600)  # Cache trend data for 10 minutes
-def get_trend_data_cached(trend_monitor, data):
-    """Cached trend data generation"""
-    if trend_monitor is None:
-        return None
-    try:
-        return trend_monitor.generate_trend_data(data)
-    except Exception as e:
-        return None
+# Note: Trend data generation is fast, so we don't cache it to avoid unhashable parameter issues
 
 def show_message_auditor(data, message_auditor, components_loaded):
     """Message auditing interface"""
@@ -460,11 +458,9 @@ def show_message_auditor(data, message_auditor, components_loaded):
                 elif st.button("🔍 Audit Conversation", type="primary"):
                     with st.spinner("Auditing conversation..."):
                         # Use cached audit function
-                        audit_result = audit_conversation_cached(
-                            message_auditor,
-                            conversation.get('id', conversation.get('conversation_id', 'unknown')),
-                            conversation
-                        )
+                        conversation_id = conversation.get('id', conversation.get('conversation_id', 'unknown'))
+                        conversation_data_json = json.dumps(conversation, sort_keys=True, default=str)
+                        audit_result = audit_conversation_cached(conversation_id, conversation_data_json)
                         
                         if audit_result is None:
                             try:
@@ -510,8 +506,12 @@ def show_trend_monitor(data, trend_monitor):
         st.info("💡 The trend monitor requires all AI components to be initialized successfully.")
         return
 
-    # Generate trend data (cached)
-    trend_data = get_trend_data_cached(trend_monitor, data)
+    # Generate trend data (not cached - fast operation, avoids unhashable parameter issues)
+    try:
+        trend_data = trend_monitor.generate_trend_data(data)
+    except Exception as e:
+        st.error(f"Failed to generate trend data: {e}")
+        trend_data = None
 
     # Time series plot
     if trend_data:
