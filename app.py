@@ -364,7 +364,6 @@ def show_profile_scanner(data, profile_scanner, components_loaded):
                                     analysis_result = None
                             
                             if analysis_result:
-
                                 # Display results
                                 risk_score = analysis_result.get('risk_score', 0)
                                 risk_level = "High" if risk_score > 0.7 else "Medium" if risk_score > 0.3 else "Low"
@@ -383,8 +382,8 @@ def show_profile_scanner(data, profile_scanner, components_loaded):
                                     st.markdown("#### Risk Factors Detected:")
                                     for factor in analysis_result['risk_factors']:
                                         st.write(f"• {factor}")
-                            except Exception as e:
-                                st.error(f"Analysis failed: {e}")
+                            else:
+                                # Show pre-computed risk score if analysis failed
                                 st.info("Showing pre-computed risk score instead.")
                                 risk_score = profile.get('risk_score', 0)
                                 risk_level = "High" if risk_score > 0.7 else "Medium" if risk_score > 0.3 else "Low"
