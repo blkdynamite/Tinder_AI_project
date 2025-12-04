@@ -149,13 +149,17 @@ class MessageAuditor:
 
         for msg in messages:
             sender = msg.get('sender', '')
-            text = msg.get('text', '')
-
-            if sender == 'them':
+            # Support both formats: 'them'/'me' and profile IDs
+            internal_sender = msg.get('_internal_sender', sender)
+            if internal_sender == 'them' or (sender != 'me' and sender != 'user_001' and sender):
+                # It's from them
                 analysis['their_messages'] += 1
+                text = msg.get('text', msg.get('content', ''))
                 their_messages.append(text)
-            elif sender == 'me':
+            else:
+                # It's from me
                 analysis['your_messages'] += 1
+                text = msg.get('text', msg.get('content', ''))
                 your_messages.append(text)
 
         # Analyze their messages for risk patterns
@@ -166,7 +170,7 @@ class MessageAuditor:
                 matches = []
                 for pattern in patterns:
                     for msg_text in their_messages:
-                        found_matches = re.findall(pattern, msg_text, re.IGNORECASE)
+                        found_matches = re.findall(pattern, msg_text.lower(), re.IGNORECASE)
                         if found_matches:
                             matches.extend(found_matches)
 
@@ -186,7 +190,7 @@ class MessageAuditor:
         for category, patterns in self.escalation_indicators.items():
             for pattern in patterns:
                 for msg_text in their_messages:
-                    found_matches = re.findall(pattern, msg_text, re.IGNORECASE)
+                    found_matches = re.findall(pattern, msg_text.lower(), re.IGNORECASE)
                     if found_matches:
                         escalation_matches.extend(found_matches)
 
@@ -216,7 +220,7 @@ class MessageAuditor:
         sentiments = []
 
         for msg in messages:
-            text = msg.get('text', '')
+            text = msg.get('text', msg.get('content', ''))
 
             try:
                 # Get sentiment scores
@@ -301,7 +305,9 @@ class MessageAuditor:
             }
 
         # Conversation balance
-        their_count = sum(1 for msg in messages if msg.get('sender') == 'them')
+        their_count = sum(1 for msg in messages 
+                         if msg.get('_internal_sender') == 'them' or 
+                         (msg.get('sender') != 'me' and msg.get('sender') != 'user_001' and msg.get('sender')))
         total_count = len(messages)
         analysis['conversation_balance'] = their_count / total_count if total_count > 0 else 0.5
 
@@ -312,7 +318,10 @@ class MessageAuditor:
             analysis['engagement_patterns'].append('Low engagement from them')
 
         # Check for scripted responses (similar message lengths)
-        lengths = [len(msg.get('text', '')) for msg in messages if msg.get('sender') == 'them']
+        lengths = [len(msg.get('text', msg.get('content', ''))) 
+                  for msg in messages 
+                  if msg.get('_internal_sender') == 'them' or 
+                  (msg.get('sender') != 'me' and msg.get('sender') != 'user_001' and msg.get('sender'))]
         if lengths and len(lengths) > 3:
             length_std = np.std(lengths)
             length_mean = np.mean(lengths)
@@ -475,6 +484,58 @@ class MessageAuditor:
             'temporal_analysis': {},
             'recommendations': ['No messages to analyze']
         }
+
+    def audit_conversation(self, conversation):
+        """
+        Wrapper method for app.py compatibility
+        Returns formatted audit results matching expected interface
+        """
+        analysis = self.analyze_conversation(conversation)
+        
+        # Format for app.py interface
+        audit_result = {
+            'risk_score': analysis.get('overall_risk_score', 0),
+            'analysis': '. '.join(analysis.get('insights', [])) if analysis.get('insights') else 'No analysis available',
+            'flagged_messages': []
+        }
+        
+        # Extract flagged messages from pattern analysis
+        pattern_analysis = analysis.get('pattern_analysis', {})
+        risk_keywords = pattern_analysis.get('risk_keywords_found', [])
+        
+        messages = conversation.get('messages', [])
+        for msg in messages:
+            sender = msg.get('sender', '')
+            internal_sender = msg.get('_internal_sender', sender)
+            if internal_sender == 'them' or (sender != 'me' and sender != 'user_001' and sender):
+                text = msg.get('text', msg.get('content', ''))
+                # Check if message contains risk keywords
+                for keyword_group in risk_keywords:
+                    for match in keyword_group.get('matches', []):
+                        if match.lower() in text.lower():
+                            audit_result['flagged_messages'].append({
+                                'message': text,
+                                'reason': f"{keyword_group.get('category', 'Unknown')} - {keyword_group.get('subcategory', 'pattern')}"
+                            })
+                            break
+
+        # Add escalation indicators as flagged messages
+        escalation = pattern_analysis.get('escalation_indicators', {})
+        if escalation.get('count', 0) > 0:
+            for msg in messages:
+                sender = msg.get('sender', '')
+                internal_sender = msg.get('_internal_sender', sender)
+                if internal_sender == 'them' or (sender != 'me' and sender != 'user_001' and sender):
+                    text = msg.get('text', msg.get('content', ''))
+                    for example in escalation.get('examples', []):
+                        if example.lower() in text.lower():
+                            audit_result['flagged_messages'].append({
+                                'message': text,
+                                'reason': 'Escalation indicator detected'
+                            })
+                            break
+        
+        return audit_result
 
     def batch_analyze_conversations(self, conversations):
         """Analyze multiple conversations efficiently"""

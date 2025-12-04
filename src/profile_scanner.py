@@ -87,6 +87,10 @@ class ProfileScanner:
         analysis['insights'] = self._generate_insights(analysis)
         analysis['recommendations'] = self._generate_recommendations(analysis)
 
+        # Add app.py compatibility fields
+        analysis['risk_score'] = analysis['overall_risk_score']  # Alias for app.py
+        analysis['analysis'] = '. '.join(analysis['insights']) if analysis['insights'] else 'No analysis available'
+
         return analysis
 
     def _analyze_text_content(self, profile):

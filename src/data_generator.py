@@ -28,8 +28,10 @@ class TinderDataGenerator:
         """Generate a realistic Tinder profile with optional risk indicators"""
 
         # Base profile data
+        profile_id = self.fake.uuid4()
         profile = {
-            'id': self.fake.uuid4(),
+            'id': profile_id,
+            'profile_id': profile_id,  # Alias for app.py compatibility
             'name': self.fake.first_name(),
             'age': random.randint(18, 45),
             'location': self.fake.city(),
@@ -74,6 +76,7 @@ class TinderDataGenerator:
         conversation = {
             'id': self.fake.uuid4(),
             'profile_id': profile['id'],
+            'participants': [profile['id'], 'user_001'],  # Add participants for app.py compatibility
             'messages': [],
             'duration_days': random.randint(1, 30),
             'total_messages': random.randint(5, 50),
@@ -91,9 +94,11 @@ class TinderDataGenerator:
             message_text = self._generate_message(sender, is_scam, i, conversation['total_messages'])
             messages.append({
                 'timestamp': current_time.isoformat(),
-                'sender': sender,
-                'text': message_text,
-                'sentiment': self._analyze_sentiment(message_text)
+                'sender': profile['id'] if sender == 'them' else 'user_001',  # Use profile ID for 'them', user ID for 'me'
+                'text': message_text,  # For message_auditor compatibility (uses 'sender' == 'them')
+                'content': message_text,  # For app.py compatibility
+                'sentiment': self._analyze_sentiment(message_text),
+                '_internal_sender': sender  # Keep 'them'/'me' for message_auditor
             })
             # Add some time delay
             current_time = self.fake.date_time_between(start_date=current_time, end_date='+1d')
@@ -219,8 +224,9 @@ class TinderDataGenerator:
         score = 0.0
 
         for i, msg in enumerate(messages):
-            if msg['sender'] == 'them':  # Only count their escalation attempts
-                text_lower = msg['text'].lower()
+            sender = msg.get('_internal_sender', msg.get('sender', ''))
+            if sender == 'them':  # Only count their escalation attempts
+                text_lower = msg.get('text', msg.get('content', '')).lower()
                 if any(indicator in text_lower for indicator in escalation_indicators):
                     # Earlier in conversation = higher escalation score
                     score += (1.0 - (i / len(messages))) * 0.3
@@ -270,6 +276,42 @@ class TinderDataGenerator:
             json.dump(data, f, indent=2)
 
         print(f"Data saved to {output_path}")
+
+def generate_synthetic_data(num_profiles=50, num_conversations=None, include_risky=True, include_scams=True):
+    """
+    Wrapper function to generate synthetic Tinder data
+    Compatible with app.py interface
+    
+    Args:
+        num_profiles: Number of profiles to generate
+        num_conversations: Number of conversations (if None, auto-generated based on profiles)
+        include_risky: Whether to include risky profiles (always True, handled by risk distribution)
+        include_scams: Whether to include scam conversations (always True, handled by risk distribution)
+    
+    Returns:
+        Dictionary with 'profiles' and 'conversations' keys
+    """
+    generator = TinderDataGenerator()
+    
+    # Generate dataset (risk distribution is handled internally)
+    data = generator.generate_dataset(num_profiles)
+    
+    # If specific number of conversations requested, adjust
+    if num_conversations is not None and len(data['conversations']) != num_conversations:
+        # Trim or extend conversations to match requested count
+        if len(data['conversations']) > num_conversations:
+            data['conversations'] = data['conversations'][:num_conversations]
+        else:
+            # Generate additional conversations
+            needed = num_conversations - len(data['conversations'])
+            for _ in range(needed):
+                # Pick a random profile
+                profile = random.choice(data['profiles'])
+                is_scam = profile.get('risk_score', 0) > 0.7 and random.random() < 0.8
+                conversation = generator.generate_conversation(profile, is_scam)
+                data['conversations'].append(conversation)
+    
+    return data
 
 if __name__ == "__main__":
     generator = TinderDataGenerator()
