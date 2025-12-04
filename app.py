@@ -85,14 +85,44 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-@st.cache_data
+@st.cache_resource
+def initialize_profile_scanner():
+    """Initialize ProfileScanner with caching - models loaded once"""
+    if ProfileScanner is None:
+        return None
+    try:
+        return ProfileScanner()
+    except Exception as e:
+        return None
+
+@st.cache_resource
+def initialize_message_auditor():
+    """Initialize MessageAuditor with caching - models loaded once"""
+    if MessageAuditor is None:
+        return None
+    try:
+        return MessageAuditor()
+    except Exception as e:
+        return None
+
+@st.cache_resource
+def initialize_trend_monitor():
+    """Initialize TrendMonitor with caching"""
+    if TrendMonitor is None:
+        return None
+    try:
+        return TrendMonitor()
+    except Exception as e:
+        return None
+
+@st.cache_data(ttl=3600)  # Cache for 1 hour
 def load_demo_data():
     """Load or generate demo data with caching for performance"""
     data_file = Path("data/demo_tinder_data.json")
     if data_file.exists():
         try:
-            with open(data_file, 'r') as f:
-                return json.load(f)
+        with open(data_file, 'r') as f:
+            return json.load(f)
         except:
             pass
 
@@ -160,35 +190,24 @@ def main():
             st.cache_data.clear()
             st.rerun()
 
-    data = load_demo_data()
+data = load_demo_data()
 
-    # Initialize components with error handling
-    profile_scanner = None
-    message_auditor = None
-    trend_monitor = None
-    COMPONENTS_LOADED = False
+    # Initialize components with caching (models loaded once, reused across reruns)
+    # Use cached initialization functions for better performance
+    profile_scanner = initialize_profile_scanner()
+    message_auditor = initialize_message_auditor()
+    trend_monitor = initialize_trend_monitor()
     
-    # TrendMonitor doesn't require heavy dependencies, so create it first
-    if TrendMonitor is not None:
-        try:
-            trend_monitor = TrendMonitor()
-        except Exception as e:
-            st.warning(f"⚠️ Trend monitor failed to initialize: {e}")
-    else:
-        st.warning("⚠️ TrendMonitor class not available. Some features will be limited.")
+    # Check if components loaded successfully
+    COMPONENTS_LOADED = (profile_scanner is not None and message_auditor is not None)
     
-    # Try to initialize AI components (may fail if spaCy model missing)
-    if ProfileScanner is not None and MessageAuditor is not None:
-        try:
-            profile_scanner = ProfileScanner()
-            message_auditor = MessageAuditor()
-            COMPONENTS_LOADED = True
-        except Exception as e:
-            st.warning(f"⚠️ Some AI components failed to initialize: {e}")
-            st.info("💡 The app will work in simplified mode. Some advanced features may be limited.")
-    else:
-        st.warning("⚠️ AI components not available. Running in basic mode.")
-        st.info("💡 Some features require the src modules to be properly imported.")
+    # Show warnings only once using session state
+    if 'warnings_shown' not in st.session_state:
+        if trend_monitor is None:
+            st.sidebar.warning("⚠️ Trend monitor not available")
+        if not COMPONENTS_LOADED:
+            st.sidebar.warning("⚠️ AI components not fully loaded - running in basic mode")
+        st.session_state.warnings_shown = True
 
     # Main content based on selected page
     if page == "Dashboard Overview":
@@ -220,29 +239,29 @@ def show_dashboard_overview(data, trend_monitor):
     st.markdown('<h1 class="main-header">🎯 Tinder AI Agent Dashboard</h1>', unsafe_allow_html=True)
 
     # Key Metrics Row
-    col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4 = st.columns(4)
 
     total_profiles = len(data.get('profiles', []))
     total_conversations = len(data.get('conversations', []))
     high_risk_profiles = sum(1 for p in data.get('profiles', []) if p.get('risk_score', 0) > 0.7)
     flagged_conversations = sum(1 for c in data.get('conversations', []) if c.get('risk_flags', []))
 
-    with col1:
+with col1:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
         st.metric("Total Profiles", total_profiles)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    with col2:
+with col2:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
         st.metric("Total Conversations", total_conversations)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    with col3:
+with col3:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
         st.metric("High Risk Profiles", high_risk_profiles)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    with col4:
+with col4:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
         st.metric("Flagged Conversations", flagged_conversations)
         st.markdown('</div>', unsafe_allow_html=True)
@@ -288,6 +307,16 @@ def show_dashboard_overview(data, trend_monitor):
     else:
         st.info("No high-risk items detected in current dataset.")
 
+@st.cache_data(ttl=300)  # Cache analysis results for 5 minutes
+def analyze_profile_cached(profile_scanner, profile_id, profile_data):
+    """Cached profile analysis to avoid re-computation"""
+    if profile_scanner is None:
+        return None
+    try:
+        return profile_scanner.analyze_profile(profile_data)
+    except Exception as e:
+        return None
+
 def show_profile_scanner(data, profile_scanner, components_loaded):
     """Profile scanning interface"""
 
@@ -319,8 +348,22 @@ def show_profile_scanner(data, profile_scanner, components_loaded):
                 if components_loaded:
                     if st.button("🔍 Analyze Profile", type="primary"):
                         with st.spinner("Analyzing profile..."):
-                            try:
-                                analysis_result = profile_scanner.analyze_profile(profile)
+                            # Use cached analysis function
+                            analysis_result = analyze_profile_cached(
+                                profile_scanner, 
+                                profile.get('profile_id', profile.get('id', 'unknown')),
+                                profile
+                            )
+                            
+                            if analysis_result is None:
+                                try:
+                                    # Fallback to direct call if cache fails
+                                    analysis_result = profile_scanner.analyze_profile(profile)
+                                except Exception as e:
+                                    st.error(f"Analysis failed: {e}")
+                                    analysis_result = None
+                            
+                            if analysis_result:
 
                                 # Display results
                                 risk_score = analysis_result.get('risk_score', 0)
@@ -355,6 +398,26 @@ def show_profile_scanner(data, profile_scanner, components_loaded):
                     st.metric("Risk Score", f"{risk_score:.3f}")
     else:
         st.warning("No profiles available. Please generate synthetic data first.")
+
+@st.cache_data(ttl=300)  # Cache audit results for 5 minutes
+def audit_conversation_cached(message_auditor, conversation_id, conversation_data):
+    """Cached conversation audit to avoid re-computation"""
+    if message_auditor is None:
+        return None
+    try:
+        return message_auditor.audit_conversation(conversation_data)
+    except Exception as e:
+        return None
+
+@st.cache_data(ttl=600)  # Cache trend data for 10 minutes
+def get_trend_data_cached(trend_monitor, data):
+    """Cached trend data generation"""
+    if trend_monitor is None:
+        return None
+    try:
+        return trend_monitor.generate_trend_data(data)
+    except Exception as e:
+        return None
 
 def show_message_auditor(data, message_auditor, components_loaded):
     """Message auditing interface"""
@@ -397,15 +460,24 @@ def show_message_auditor(data, message_auditor, components_loaded):
                     st.metric("Risk Score", f"{risk_score:.3f}")
                 elif st.button("🔍 Audit Conversation", type="primary"):
                     with st.spinner("Auditing conversation..."):
-                        try:
-                            audit_result = message_auditor.audit_conversation(conversation)
-                        except Exception as e:
-                            st.error(f"Audit failed: {e}")
-                            audit_result = {
-                                'risk_score': conversation.get('risk_score', 0.5),
-                                'analysis': 'Analysis unavailable',
-                                'flagged_messages': []
-                            }
+                        # Use cached audit function
+                        audit_result = audit_conversation_cached(
+                            message_auditor,
+                            conversation.get('id', conversation.get('conversation_id', 'unknown')),
+                            conversation
+                        )
+                        
+                        if audit_result is None:
+                            try:
+                                # Fallback to direct call if cache fails
+                                audit_result = message_auditor.audit_conversation(conversation)
+                            except Exception as e:
+                                st.error(f"Audit failed: {e}")
+                                audit_result = {
+                                    'risk_score': conversation.get('risk_score', 0.5),
+                                    'analysis': 'Analysis unavailable',
+                                    'flagged_messages': []
+                                }
 
                     # Display results
                     risk_score = audit_result.get('risk_score', 0)
@@ -439,12 +511,8 @@ def show_trend_monitor(data, trend_monitor):
         st.info("💡 The trend monitor requires all AI components to be initialized successfully.")
         return
 
-    # Generate trend data
-    try:
-        trend_data = trend_monitor.generate_trend_data(data)
-    except Exception as e:
-        st.error(f"Failed to generate trend data: {e}")
-        trend_data = None
+    # Generate trend data (cached)
+    trend_data = get_trend_data_cached(trend_monitor, data)
 
     # Time series plot
     if trend_data:
