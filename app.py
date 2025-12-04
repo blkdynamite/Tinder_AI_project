@@ -1117,7 +1117,7 @@ def show_ring_detector(data, ring_detector):
                 st.info("Graph has {G.number_of_nodes()} nodes and {G.number_of_edges()} edges")
     
     else:
-            st.info("👈 Click 'Analyze Current Data' to detect coordinated rings")
+        st.info("👈 Click 'Analyze Current Data' to detect coordinated rings")
         
         # Show data preview
         if profiles:
