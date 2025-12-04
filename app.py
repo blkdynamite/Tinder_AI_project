@@ -514,12 +514,14 @@ def show_trend_monitor(data, trend_monitor):
         trend_data = None
 
     # Time series plot
-    if trend_data:
+    if trend_data is not None and not trend_data.empty:
         st.markdown("### Risk Trends Over Time")
         fig = px.line(trend_data, x='date', y='risk_score',
                      title="Average Risk Score Trend",
                      labels={'risk_score': 'Risk Score', 'date': 'Date'})
         st.plotly_chart(fig, use_container_width=True)
+    elif trend_data is None:
+        st.info("Trend data is not available. Please check that data has been loaded.")
 
     # KPI Cards
     col1, col2, col3 = st.columns(3)
@@ -555,19 +557,30 @@ def show_data_generator():
 
     if st.button("🚀 Generate Synthetic Data", type="primary"):
         with st.spinner("Generating synthetic data..."):
-            data = generate_synthetic_data(
-                num_profiles=num_profiles,
-                num_conversations=num_conversations,
-                include_risky=include_risky,
-                include_scams=include_scams
-            )
+            if generate_synthetic_data is None:
+                st.error("Data generator not available. Please check that modules are loaded.")
+            else:
+                data = generate_synthetic_data(
+                    num_profiles=num_profiles,
+                    num_conversations=num_conversations,
+                    include_risky=include_risky,
+                    include_scams=include_scams
+                )
 
-            # Save to file
-            with open("data/synthetic_tinder_data.json", 'w') as f:
-                json.dump(data, f, indent=2, default=str)
+                # Save to file
+                data_path = Path("data/demo_tinder_data.json")
+                data_path.parent.mkdir(exist_ok=True)
+                with open(data_path, 'w') as f:
+                    json.dump(data, f, indent=2, default=str)
 
-            st.success(f"Generated {len(data['profiles'])} profiles and {len(data['conversations'])} conversations!")
-            st.balloons()
+                # Clear cache to force reload of new data
+                st.cache_data.clear()
+                
+                st.success(f"Generated {len(data['profiles'])} profiles and {len(data['conversations'])} conversations!")
+                st.balloons()
+                
+                # Trigger rerun to update dashboard with new data
+                st.rerun()
 
 # Streamlit runs the script directly, so call main() at module level
 main()
