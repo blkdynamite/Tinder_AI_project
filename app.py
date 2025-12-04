@@ -326,29 +326,29 @@ def show_dashboard_overview(data, trend_monitor):
     st.markdown('<h1 class="main-header">🎯 Tinder AI Agent Dashboard</h1>', unsafe_allow_html=True)
 
     # Key Metrics Row
-col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4 = st.columns(4)
 
     total_profiles = len(data.get('profiles', []))
     total_conversations = len(data.get('conversations', []))
     high_risk_profiles = sum(1 for p in data.get('profiles', []) if p.get('risk_score', 0) > 0.7)
     flagged_conversations = sum(1 for c in data.get('conversations', []) if c.get('risk_flags', []))
 
-with col1:
+    with col1:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
         st.metric("Total Profiles", total_profiles)
         st.markdown('</div>', unsafe_allow_html=True)
 
-with col2:
+    with col2:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
         st.metric("Total Conversations", total_conversations)
         st.markdown('</div>', unsafe_allow_html=True)
 
-with col3:
+    with col3:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
         st.metric("High Risk Profiles", high_risk_profiles)
         st.markdown('</div>', unsafe_allow_html=True)
 
-with col4:
+    with col4:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
         st.metric("Flagged Conversations", flagged_conversations)
         st.markdown('</div>', unsafe_allow_html=True)
