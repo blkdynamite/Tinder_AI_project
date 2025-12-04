@@ -19,7 +19,21 @@ from datetime import datetime, timedelta
 import json
 from pathlib import Path
 
+# Page configuration (must be first)
+st.set_page_config(
+    page_title="Tinder AI Agent",
+    page_icon="🔍",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 # Import custom modules with error handling for cloud deployment
+ProfileScanner = None
+MessageAuditor = None
+TrendMonitor = None
+generate_synthetic_data = None
+MODULES_LOADED = False
+
 try:
     from src.profile_scanner import ProfileScanner
     from src.message_auditor import MessageAuditor
@@ -27,17 +41,11 @@ try:
     from src.data_generator import generate_synthetic_data
     MODULES_LOADED = True
 except ImportError as e:
-    st.error(f"Failed to load custom modules: {e}")
-    st.error("Please ensure all dependencies are installed correctly.")
+    # Don't show error at import time - handle in main()
     MODULES_LOADED = False
-
-# Page configuration
-st.set_page_config(
-    page_title="Tinder AI Agent",
-    page_icon="🔍",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+except Exception as e:
+    # Handle any other import errors
+    MODULES_LOADED = False
 
 # Custom CSS for better styling
 st.markdown("""
@@ -90,8 +98,13 @@ def load_demo_data():
 
     # Generate demo data if file doesn't exist
     try:
-        from src.data_generator import generate_synthetic_data
-        data = generate_synthetic_data(num_profiles=20, num_conversations=10, include_risky=True, include_scams=True)
+        # Use global generate_synthetic_data if available
+        if generate_synthetic_data is not None:
+            data = generate_synthetic_data(num_profiles=20, num_conversations=10, include_risky=True, include_scams=True)
+        else:
+            # Fallback: try to import directly
+            from src.data_generator import generate_synthetic_data as gen_func
+            data = gen_func(num_profiles=20, num_conversations=10, include_risky=True, include_scams=True)
         # Save for future use
         data_file.parent.mkdir(exist_ok=True)
         with open(data_file, 'w') as f:
@@ -128,8 +141,9 @@ def main():
     """Main application function"""
 
     if not MODULES_LOADED:
-        st.error("Application modules failed to load. Please check the sidebar for setup instructions.")
-        return
+        st.error("⚠️ Application modules failed to load.")
+        st.info("💡 The app will run in basic mode with limited functionality.")
+        # Continue anyway - app can still show basic data
 
     # Sidebar navigation
     st.sidebar.title("🔍 Tinder AI Agent")
@@ -155,20 +169,26 @@ def main():
     COMPONENTS_LOADED = False
     
     # TrendMonitor doesn't require heavy dependencies, so create it first
-    try:
-        trend_monitor = TrendMonitor()
-    except Exception as e:
-        st.warning(f"⚠️ Trend monitor failed to initialize: {e}")
+    if TrendMonitor is not None:
+        try:
+            trend_monitor = TrendMonitor()
+        except Exception as e:
+            st.warning(f"⚠️ Trend monitor failed to initialize: {e}")
+    else:
+        st.warning("⚠️ TrendMonitor class not available. Some features will be limited.")
     
     # Try to initialize AI components (may fail if spaCy model missing)
-    try:
-        profile_scanner = ProfileScanner()
-        message_auditor = MessageAuditor()
-        COMPONENTS_LOADED = True
-    except Exception as e:
-        st.warning(f"⚠️ Some AI components failed to initialize: {e}")
-        st.info("💡 The app will work in simplified mode. Some advanced features may be limited.")
-        # Components will remain None, but app will still work
+    if ProfileScanner is not None and MessageAuditor is not None:
+        try:
+            profile_scanner = ProfileScanner()
+            message_auditor = MessageAuditor()
+            COMPONENTS_LOADED = True
+        except Exception as e:
+            st.warning(f"⚠️ Some AI components failed to initialize: {e}")
+            st.info("💡 The app will work in simplified mode. Some advanced features may be limited.")
+    else:
+        st.warning("⚠️ AI components not available. Running in basic mode.")
+        st.info("💡 Some features require the src modules to be properly imported.")
 
     # Main content based on selected page
     if page == "Dashboard Overview":
