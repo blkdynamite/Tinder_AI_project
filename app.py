@@ -121,8 +121,8 @@ def load_demo_data():
     data_file = Path("data/demo_tinder_data.json")
     if data_file.exists():
         try:
-        with open(data_file, 'r') as f:
-            return json.load(f)
+            with open(data_file, 'r') as f:
+                return json.load(f)
         except:
             pass
 
