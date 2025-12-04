@@ -12,13 +12,16 @@ logger = logging.getLogger(__name__)
 class MessageAuditor:
     def __init__(self):
         """Initialize the message auditor with NLP models"""
+        self.nlp = None
         try:
             self.nlp = spacy.load("en_core_web_sm")
         except OSError:
-            logger.warning("spaCy model not found. Installing...")
-            import subprocess
-            subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"])
-            self.nlp = spacy.load("en_core_web_sm")
+            logger.warning("spaCy model 'en_core_web_sm' not found. Continuing without advanced NLP features.")
+            # Try to load a basic English model as fallback
+            try:
+                self.nlp = spacy.load("en_core_web_sm", disable=["parser", "ner"])
+            except:
+                logger.warning("Could not load spaCy model. Some features will be limited.")
 
         # Initialize sentiment analysis pipeline
         self.sentiment_analyzer = pipeline(

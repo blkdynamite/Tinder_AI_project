@@ -149,25 +149,36 @@ def main():
     data = load_demo_data()
 
     # Initialize components with error handling
+    profile_scanner = None
+    message_auditor = None
+    trend_monitor = None
+    COMPONENTS_LOADED = False
+    
+    # TrendMonitor doesn't require heavy dependencies, so create it first
+    try:
+        trend_monitor = TrendMonitor()
+    except Exception as e:
+        st.warning(f"⚠️ Trend monitor failed to initialize: {e}")
+    
+    # Try to initialize AI components (may fail if spaCy model missing)
     try:
         profile_scanner = ProfileScanner()
         message_auditor = MessageAuditor()
-        trend_monitor = TrendMonitor()
         COMPONENTS_LOADED = True
     except Exception as e:
-        st.error(f"Failed to initialize AI components: {e}")
-        st.error("Using simplified demo mode.")
-        COMPONENTS_LOADED = False
+        st.warning(f"⚠️ Some AI components failed to initialize: {e}")
+        st.info("💡 The app will work in simplified mode. Some advanced features may be limited.")
+        # Components will remain None, but app will still work
 
     # Main content based on selected page
     if page == "Dashboard Overview":
         show_dashboard_overview(data, trend_monitor)
 
     elif page == "Profile Scanner":
-        show_profile_scanner(data, profile_scanner)
+        show_profile_scanner(data, profile_scanner, COMPONENTS_LOADED)
 
     elif page == "Message Auditor":
-        show_message_auditor(data, message_auditor)
+        show_message_auditor(data, message_auditor, COMPONENTS_LOADED)
 
     elif page == "Trend Monitor":
         show_trend_monitor(data, trend_monitor)
@@ -182,7 +193,10 @@ def main():
 
 def show_dashboard_overview(data, trend_monitor):
     """Display main dashboard with key metrics and risk overview"""
-
+    
+    if trend_monitor is None:
+        st.warning("⚠️ Trend monitor not available. Showing basic dashboard.")
+    
     st.markdown('<h1 class="main-header">🎯 Tinder AI Agent Dashboard</h1>', unsafe_allow_html=True)
 
     # Key Metrics Row
@@ -254,11 +268,14 @@ def show_dashboard_overview(data, trend_monitor):
     else:
         st.info("No high-risk items detected in current dataset.")
 
-def show_profile_scanner(data, profile_scanner):
+def show_profile_scanner(data, profile_scanner, components_loaded):
     """Profile scanning interface"""
 
     st.markdown("## 👤 Profile Scanner")
     st.markdown("Analyze Tinder profiles for risk indicators using CV and NLP")
+    
+    if profile_scanner is None:
+        components_loaded = False
 
     # Profile selection
     if data.get('profiles'):
@@ -279,7 +296,7 @@ def show_profile_scanner(data, profile_scanner):
             with col2:
                 st.markdown("### Risk Analysis")
 
-                if COMPONENTS_LOADED:
+                if components_loaded:
                     if st.button("🔍 Analyze Profile", type="primary"):
                         with st.spinner("Analyzing profile..."):
                             try:
@@ -319,11 +336,15 @@ def show_profile_scanner(data, profile_scanner):
     else:
         st.warning("No profiles available. Please generate synthetic data first.")
 
-def show_message_auditor(data, message_auditor):
+def show_message_auditor(data, message_auditor, components_loaded):
     """Message auditing interface"""
 
     st.markdown("## 💬 Message Auditor")
     st.markdown("Analyze conversation patterns for escalation and money cues")
+    
+    if message_auditor is None:
+        components_loaded = False
+        st.warning("⚠️ Message auditor not available. Cannot perform advanced analysis.")
 
     if data.get('conversations'):
         conv_options = [f"Conversation {i+1} - {len(c.get('messages', []))} messages"
@@ -349,9 +370,22 @@ def show_message_auditor(data, message_auditor):
             with col2:
                 st.markdown("### Risk Audit")
 
-                if st.button("🔍 Audit Conversation", type="primary"):
+                if message_auditor is None:
+                    st.warning("Message auditor not available. Cannot perform analysis.")
+                    # Show basic info
+                    risk_score = conversation.get('risk_score', 0.5)
+                    st.metric("Risk Score", f"{risk_score:.3f}")
+                elif st.button("🔍 Audit Conversation", type="primary"):
                     with st.spinner("Auditing conversation..."):
-                        audit_result = message_auditor.audit_conversation(conversation)
+                        try:
+                            audit_result = message_auditor.audit_conversation(conversation)
+                        except Exception as e:
+                            st.error(f"Audit failed: {e}")
+                            audit_result = {
+                                'risk_score': conversation.get('risk_score', 0.5),
+                                'analysis': 'Analysis unavailable',
+                                'flagged_messages': []
+                            }
 
                     # Display results
                     risk_score = audit_result.get('risk_score', 0)
@@ -380,8 +414,17 @@ def show_trend_monitor(data, trend_monitor):
     st.markdown("## 📊 Trend Monitor")
     st.markdown("Monitor KPIs and risk trends over time")
 
+    if trend_monitor is None:
+        st.error("⚠️ Trend monitor is not available. Please check that all dependencies are installed.")
+        st.info("💡 The trend monitor requires all AI components to be initialized successfully.")
+        return
+
     # Generate trend data
-    trend_data = trend_monitor.generate_trend_data(data)
+    try:
+        trend_data = trend_monitor.generate_trend_data(data)
+    except Exception as e:
+        st.error(f"Failed to generate trend data: {e}")
+        trend_data = None
 
     # Time series plot
     if trend_data:

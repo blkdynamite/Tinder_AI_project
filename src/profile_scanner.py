@@ -15,14 +15,17 @@ logger = logging.getLogger(__name__)
 class ProfileScanner:
     def __init__(self):
         """Initialize the profile scanner with ML models"""
+        self.nlp = None
         try:
             # Load spaCy model for NLP analysis
             self.nlp = spacy.load("en_core_web_sm")
         except OSError:
-            logger.warning("spaCy model not found. Installing...")
-            import subprocess
-            subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"])
-            self.nlp = spacy.load("en_core_web_sm")
+            logger.warning("spaCy model 'en_core_web_sm' not found. Continuing without advanced NLP features.")
+            # Try to load a basic English model as fallback
+            try:
+                self.nlp = spacy.load("en_core_web_sm", disable=["parser", "ner"])
+            except:
+                logger.warning("Could not load spaCy model. Some features will be limited.")
 
         # Initialize sentiment analysis pipeline
         self.sentiment_analyzer = pipeline(
@@ -145,12 +148,16 @@ class ProfileScanner:
             analysis['sentiment_score'] = 0.5
 
         # spaCy analysis for linguistic patterns
-        doc = self.nlp(text_content)
-
-        # Check for excessive capitalization (scam indicator)
-        caps_ratio = sum(1 for token in doc if token.text.isupper() and len(token.text) > 1) / len(doc)
-        if caps_ratio > 0.1:
-            analysis['linguistic_patterns'].append('excessive_capitalization')
+        if self.nlp is not None:
+            try:
+                doc = self.nlp(text_content)
+                # Check for excessive capitalization (scam indicator)
+                if len(doc) > 0:
+                    caps_ratio = sum(1 for token in doc if token.text.isupper() and len(token.text) > 1) / len(doc)
+                    if caps_ratio > 0.1:
+                        analysis['linguistic_patterns'].append('excessive_capitalization')
+            except Exception as e:
+                logger.warning(f"spaCy analysis failed: {e}")
 
         # Check for repeated punctuation
         repeated_punct = re.findall(r'[!?]{2,}', text_content)
